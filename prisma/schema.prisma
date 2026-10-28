@@ -1,0 +1,177 @@
+// Runs on Cloudflare D1 (SQLite). Migrations are SQL files in /migrations,
+// applied with `wrangler d1 migrations apply`.
+generator client {
+  provider      = "prisma-client"
+  output        = "../src/generated/prisma"
+  runtime       = "cloudflare"
+  moduleFormat  = "esm"
+  // Smaller query engine: keeps the Cloudflare bundle under the free plan's 3 MB.
+  compilerBuild = "small"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+model Institution {
+  id              String   @id
+  name            String
+  shortName       String
+  institutionType String // "IIT", "IIM" (later: "NIT", "BITS", "IISc", "ISB", "XLRI")
+  primaryDomain   String   @unique
+  approvedDomains String // JSON string array, e.g. ["iimsambalpur.ac.in"]
+  isActive        Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  users           User[]
+}
+
+// Strangers only ever see: handle, avatar, bio, campus type and languages.
+model User {
+  id             String      @id @default(cuid())
+  email          String      @unique // private: used to verify enrollment only
+  emailVerified  Boolean     @default(false)
+  institutionId  String
+  institution    Institution @relation(fields: [institutionId], references: [id])
+  handle         String      @unique // anonymous ID, e.g. "ChaiOwl482"
+  avatarKey      String? // file name in storage/avatars, random
+  bio            String? // one-line icebreaker
+  languages      String      @default("[]") // JSON string array
+  gender         String? // private, reserved for the paid filter
+  meetSameCampus Boolean     @default(false) // both people must allow it to be matched
+  ageVerified    Boolean     @default(false)
+  onboarded      Boolean     @default(false)
+  isBanned       Boolean     @default(false)
+  createdAt      DateTime    @default(now())
+  lastSeen       DateTime    @default(now())
+}
+
+// Server-side login sessions, so anyone can be signed out instantly.
+model AuthSession {
+  id         String   @id @default(cuid())
+  tokenHash  String   @unique
+  userId     String
+  createdAt  DateTime @default(now())
+  lastUsedAt DateTime @default(now())
+  expiresAt  DateTime
+
+  @@index([userId])
+}
+
+model OtpCode {
+  id        String   @id @default(cuid())
+  email     String
+  code      String // HMAC of the code, never the code itself
+  attempts  Int      @default(0)
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@index([email])
+}
+
+// Sliding-window rate limits (per IP, per email).
+model RateEvent {
+  id  Int      @id @default(autoincrement())
+  key String
+  at  DateTime @default(now())
+
+  @@index([key, at])
+}
+
+model MatchQueue {
+  id              String   @id @default(cuid())
+  userId          String   @unique
+  institutionType String
+  filter          String   @default("all") // "all" | "IIT" | "IIM"
+  targetUserId    String? // set when calling a specific friend
+  status          String   @default("WAITING") // WAITING | MATCHED
+  joinedAt        DateTime @default(now())
+}
+
+// A call. Usually two people; a third can join by invitation.
+model Session {
+  id        String          @id @default(cuid())
+  startedAt DateTime        @default(now())
+  endedAt   DateTime?
+  endReason String?
+  members   SessionMember[]
+}
+
+model SessionMember {
+  id         String    @id @default(cuid())
+  sessionId  String
+  session    Session   @relation(fields: [sessionId], references: [id])
+  userId     String
+  joinedAt   DateTime  @default(now())
+  leftAt     DateTime?
+  leftReason String? // "NEXT" | "END" | "REPORT" | "DISCONNECT"
+
+  @@index([userId, leftAt])
+  @@index([sessionId])
+}
+
+model CallInvite {
+  id        String   @id @default(cuid())
+  sessionId String
+  fromId    String
+  toId      String
+  status    String   @default("PENDING") // PENDING | ACCEPTED | DECLINED | EXPIRED
+  createdAt DateTime @default(now())
+
+  @@index([toId, status])
+}
+
+model Signal {
+  id         Int      @id @default(autoincrement())
+  sessionId  String
+  fromUserId String
+  toUserId   String
+  type       String // "offer" | "answer" | "ice"
+  payload    String
+  createdAt  DateTime @default(now())
+
+  @@index([toUserId, sessionId])
+}
+
+model Friendship {
+  id        String   @id @default(cuid())
+  userAId   String // always the smaller id of the pair
+  userBId   String
+  createdAt DateTime @default(now())
+
+  @@unique([userAId, userBId])
+}
+
+model Message {
+  id        Int      @id @default(autoincrement())
+  fromId    String
+  toId      String
+  kind      String   @default("text") // "text" | "call" | "missed_call"
+  text      String   @default("")
+  seconds   Int? // call length
+  flagged   Boolean  @default(false) // looks like it shares contact details
+  createdAt DateTime @default(now())
+
+  @@index([fromId, toId])
+}
+
+model Report {
+  id             String   @id @default(cuid())
+  reporterId     String
+  reportedUserId String
+  sessionId      String?
+  reason         String
+  description    String?
+  status         String   @default("OPEN") // OPEN | RESOLVED
+  outcome        String?
+  createdAt      DateTime @default(now())
+}
+
+model BlockedUser {
+  id            String   @id @default(cuid())
+  userId        String
+  blockedUserId String
+  createdAt     DateTime @default(now())
+
+  @@unique([userId, blockedUserId])
+}

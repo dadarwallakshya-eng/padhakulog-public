@@ -1,0 +1,31 @@
+# dependencies and builds
+node_modules/
+.next/
+out/
+*.tsbuildinfo
+next-env.d.ts
+
+# secrets and local data: never commit these
+.dev.vars*
+.wrangler/
+.open-next/
+src/generated/
+prisma/tooling.db*
+.env
+.env.*
+!.env.example
+*.db
+*.db-journal
+storage/
+
+# old prototype kept locally for reference
+_previous-version/
+
+# editor and OS
+.DS_Store
+.vscode/
+.idea/
+.claude/
+
+# Brand kit zip (the brand/ folder itself is committed)
+padhakulog-brand-kit.zip

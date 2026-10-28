@@ -1,0 +1,25 @@
+// Cloudflare Workers config for Padhaku Log.
+// Secrets (OTP_PEPPER, SESSION_SECRET, ADMIN_PASSWORD, GMAIL_*, CLOUDFLARE_TURN_*)
+// are never stored here: set them with `wrangler secret put NAME` (production)
+// or in .dev.vars (local, git-ignored).
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "padhakulog",
+  "main": "cloudflare/worker.ts",
+  "compatibility_date": "2026-10-01",
+  "compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],
+  "assets": { "directory": ".open-next/assets", "binding": "ASSETS" },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "padhakulog",
+      "database_id": "YOUR_D1_DATABASE_ID",
+      "migrations_dir": "migrations"
+    }
+  ],
+  "r2_buckets": [{ "binding": "AVATARS", "bucket_name": "padhakulog-avatars" }],
+  "durable_objects": { "bindings": [{ "name": "HUB", "class_name": "Hub" }] },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["Hub"] }],
+  "services": [{ "binding": "WORKER_SELF_REFERENCE", "service": "padhakulog" }],
+  "observability": { "enabled": true }
+}
